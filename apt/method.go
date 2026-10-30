@@ -27,6 +27,8 @@ import (
 	"strconv"
 	"strings"
 
+	"cloud.google.com/go/auth/credentials"
+	"cloud.google.com/go/auth/oauth2adapt"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
@@ -108,23 +110,24 @@ func (m *Method) initClient(ctx context.Context) error {
 	var ts oauth2.TokenSource
 	switch {
 	case m.config.serviceAccountJSON != "":
-		json, err := os.ReadFile(m.config.serviceAccountJSON)
-		if err != nil {
-			return fmt.Errorf("failed to read service account JSON file: %v", err)
-		}
-		creds, err := google.CredentialsFromJSON(ctx, json, cloudPlatformScope)
+		creds, err := credentials.DetectDefault(&credentials.DetectOptions{
+			CredentialsFile: m.config.serviceAccountJSON,
+			Scopes:          []string{cloudPlatformScope},
+		})
 		if err != nil {
 			return fmt.Errorf("failed to obtain creds from service account JSON: %v", err)
 		}
-		ts = creds.TokenSource
+		ts = oauth2adapt.TokenSourceFromTokenProvider(creds.TokenProvider)
 	case m.config.serviceAccountEmail != "":
 		ts = google.ComputeTokenSource(m.config.serviceAccountEmail)
 	default:
-		creds, err := google.FindDefaultCredentials(ctx, cloudPlatformScope)
+		creds, err := credentials.DetectDefault(&credentials.DetectOptions{
+			Scopes: []string{cloudPlatformScope},
+		})
 		if err != nil {
 			return fmt.Errorf("failed to obtain default creds: %v", err)
 		}
-		ts = creds.TokenSource
+		ts = oauth2adapt.TokenSourceFromTokenProvider(creds.TokenProvider)
 	}
 	if ts == nil {
 		return errors.New("failed to obtain creds")
